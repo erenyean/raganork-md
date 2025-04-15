@@ -4,7 +4,8 @@
   "description": "A light weight WhatsApp bot.",
   "scripts": {
     "start": "NODE_PATH=./node_modules pm2 start . --attach --name Raganork",
-    "heroku-postbuild": "npm install --legacy-peer-deps"
+    "heroku-postbuild": "npm install --legacy-peer-deps",
+    "fix-deps": "npm install --force"
   },
   "engines": {
     "node": "22.x",
@@ -22,7 +23,8 @@
   "author": "Sourav",
   "license": "GPL-3.0-or-later",
   "dependencies": {
-    "@whiskeysockets/baileys": "github:sou6av/baileys-js",
+    "@whiskeysockets/baileys": "github:WhiskeySockets/Baileys",
+    "@adiwajshing/baileys": "npm:@whiskeysockets/baileys",
     "@adiwajshing/keyed-db": "0.2.4",
     "acrcloud": "1.4.0",
     "adm-zip": "0.5.9",
@@ -30,17 +32,22 @@
     "badwords": "1.0.0",
     "google-tts-api": "2.0.2",
     "image-to-pdf": "2.0.0",
-    "imgur": "^2.2.0",
-    "link-preview-js": "^3.0.0",
-    "mongodb": "^4.3.1",
+    "imgur": "2.2.0",
+    "link-preview-js": "3.0.0",
+    "mongodb": "4.3.1",
     "node-cron": "3.0.1",
-    "node-webpmux": "^3.1.0",
-    "pg": "^8.5.1",
-    "pm2": "^5.2.2",
-    "raganork-bot": "^3.0.1",
-    "sequelize": "^6.13.0",
-    "sqlite3": "^5.0.0",
+    "node-webpmux": "3.1.0",
+    "pg": "8.5.1",
+    "pm2": "5.2.2",
+    "raganork-bot": "3.0.1",
+    "sequelize": "6.13.0",
+    "sqlite3": "5.0.0",
     "string-crypto": "2.0.2",
-    "youtubei.js": "^9.1.0"
+    "youtubei.js": "9.1.0"
+  },
+  "overrides": {
+    "raganork-bot": {
+      "youtubei.js": "2.5.3"
+    }
   }
 }
