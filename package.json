@@ -3,7 +3,11 @@
   "version": "5.0.0",
   "description": "A light weight WhatsApp bot.",
   "scripts": {
-    "start": "pm2 start . --attach --name Raganork"
+    "start": "pm2 start . --attach --name Raganork",
+    "heroku-postbuild": "npm install --legacy-peer-deps"
+  },
+  "engines": {
+    "node": "22.x"
   },
   "repository": {
     "type": "git",
@@ -24,9 +28,8 @@
   "license": "GPL-3.0-or-later",
   "homepage": "https://github.com/souravkl11/raganork#readme",
   "dependencies": {
-    "@adiwajshing/baileys": "git+https://github.com/souravkl11/Baileys.git",
-    "@adiwajshing/keyed-db": "0.2.4",
     "@whiskeysockets/baileys": "github:sou6av/baileys-js",
+    "@adiwajshing/keyed-db": "0.2.4",
     "acrcloud": "1.4.0",
     "adm-zip": "0.5.9",
     "awesome-phonenumber": "5.3.0",
@@ -34,7 +37,7 @@
     "google-tts-api": "2.0.2",
     "image-to-pdf": "2.0.0",
     "imgur": "^2.2.0",
-    "link-preview-js": "2.1.15",
+    "link-preview-js": "^3.0.0",
     "mongodb": "^4.3.1",
     "node-cron": "3.0.1",
     "node-webpmux": "^3.1.0",
