@@ -3,20 +3,16 @@
   "version": "5.0.0",
   "description": "A light weight WhatsApp bot.",
   "scripts": {
-    "start": "pm2 start . --attach --name Raganork",
+    "start": "NODE_PATH=./node_modules pm2 start . --attach --name Raganork",
     "heroku-postbuild": "npm install --legacy-peer-deps"
   },
   "engines": {
-    "node": "22.x"
+    "node": "22.x",
+    "npm": "10.x"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/souravkl11/raganork-md.git"
-  },
-  "overrides": {
-    "raganork-bot": {
-      "youtubei.js": "^2.5.3"
-    }
   },
   "keywords": [
     "whatsapp",
@@ -24,9 +20,7 @@
     "multi-device"
   ],
   "author": "Sourav",
-  "developer": "@souravkl11",
   "license": "GPL-3.0-or-later",
-  "homepage": "https://github.com/souravkl11/raganork#readme",
   "dependencies": {
     "@whiskeysockets/baileys": "github:sou6av/baileys-js",
     "@adiwajshing/keyed-db": "0.2.4",
