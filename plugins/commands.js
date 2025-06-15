@@ -188,7 +188,7 @@ Module({
     const botOwner = BOT_INFO.split(";")[1] || 'N/A';
     const botName = BOT_INFO.split(";")[0] || 'My Bot';
     const botVersion = VERSION; 
-    const botImageLink = BOT_INFO.split(";")[3] || `https://i.ibb.co/B598wrtG/raganork-bot.png`
+    const botImageLink = BOT_INFO.split(";")[3] || `https://i.ibb.co/3mDQB5rR/temp.jpg`
 
     const menu = `╭═══〘 ${botName} 〙═══⊷❍
 ┃${star}╭──────────────
