@@ -537,7 +537,7 @@ msg += "```"+s.id.split("@")[0]+"``` \n"
 return await message.sendReply(msg)
 }}));
 Module({
-    pattern: 'tag(all|admin)? ?(.*)?',
+    pattern: 'mtag(all|admin)? ?(.*)?',
     fromMe: false,
     desc: Lang.TAGALL_DESC,
     use: 'group',
