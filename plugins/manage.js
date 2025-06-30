@@ -65,7 +65,16 @@ async function setVar(key, value, message = false) {
     if (message) {
         await message.sendReply(`_${key.trim()} set to '${value}' successfully!_`);
     }
+    return true
+}
 
+async function delVar(key, message = false) {
+    await BotVariable.destroy({ where: { key: key.trim() } });
+    delete config[key.trim()];
+    if (message) {
+        await message.sendReply(`_${key.trim()} deleted successfully!_`);
+    }
+    return true;
 }
 Module({
     pattern: 'setvar ?(.*)',
@@ -643,7 +652,17 @@ Module({
         try {
             let return_val = await eval(`(async () => { ${message.message.replace(">","")} })()`);
             if (return_val && typeof return_val !== 'string') return_val = util.inspect(return_val);
-            await message.send(return_val || "no return value");
+            if (return_val) {
+                await message.send(return_val)
+            } else {
+                const reactionMessage = {
+                        react: {
+                            text: "✅",
+                            key: m.data.key
+                        }
+                    }
+                await m.client.sendMessage(m.jid, reactionMessage);
+            }
         } catch (e) {
             if (e) await message.send(util.format(e));
         }
@@ -651,5 +670,6 @@ Module({
 });
 module.exports = {
     containsDisallowedWords,
-    setVar
+    setVar,
+    delVar
 };
