@@ -1,0 +1,6 @@
+build:
+  docker:
+    web: Dockerfile
+run:
+  web: node index.js   # or python main.py, etc. depending on your app
+  
