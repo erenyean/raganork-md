@@ -32,31 +32,15 @@ const {
   getBotLid,
   getBotNumericId,
   getNumericId,
+  toLid,
+  toJid,
   isSudo,
   isFromOwner,
   isPrivateMessage,
   isLidParticipant,
 } = require("../../plugins/utils/lid-helper");
 
-async function genThumb(url) {
-  try {
-    let size = 301;
-    const jimp = await require("jimp").read(url);
-    function getPossibleRatio(a, b) {
-      for (var i = 0; size + 2 > size + 1; i++) {
-        a = a > size || b > size ? a / 1.001 : a;
-        b = a > size || b > size ? b / 1.001 : b;
-        if (parseInt(a) < size && parseInt(b) < size)
-          return { w: parseInt(a), h: parseInt(b) };
-      }
-    }
-    var { w, h } = getPossibleRatio(jimp.bitmap.width, jimp.bitmap.height);
-    return await jimp.resize(w, h).getBufferAsync("image/jpeg");
-  } catch (error) {
-    console.error("Error generating thumbnail:", error);
-    return null;
-  }
-}
+const { genThumb } = require("../helpers");
 
 class Message extends Base {
   constructor(client, data) {
@@ -65,12 +49,22 @@ class Message extends Base {
   }
   _patch(data) {
     this.id = data.key.id === undefined ? undefined : data.key.id;
-    this.jid = data.key.remoteJid;
-    this.isGroup = data.key.remoteJid.endsWith("@g.us");
+  this.jid = data.key.remoteJid; // chat jid (group or private)
+  this.isGroup = data.key.remoteJid.endsWith("@g.us");
     this.fromMe = data.key.fromMe;
-    this.isLid = this.isGroup && isLid(data.key.participant);
-    this.sender = this.isGroup ? data.key.participant : data.key.remoteJid;
-    this.fromOwner = isFromOwner(data, this.client, config.SUDO);
+    // Primary sender identifier (LID when possible). Keep jid for sending operations.
+    if (this.isGroup) {
+      this.isLid = isLid(data.key.participant);
+      this.lid = data.key.participant ? toLid(data.key.participant) : null;
+      this.sender = this.lid; // primary identifier
+      this.senderJid = data.key.participant || data.key.remoteJid; // preserve raw jid for mentions/ops
+    } else {
+      this.isLid = isLid(data.key.remoteJid);
+      this.lid = toLid(data.key.remoteJid);
+      this.sender = this.lid;
+      this.senderJid = toJid(this.lid);
+    }
+  this.fromOwner = isFromOwner(data, this.client, config.SUDO);
     this.senderName = data.pushName;
     this.myjid = getBotNumericId(data, this.client);
     this.message =
@@ -93,12 +87,12 @@ class Message extends Base {
     if (contextInfo?.quotedMessage) {
       contextInfo.remoteJid = contextInfo.remoteJid || this.jid;
       this.reply_message = new ReplyMessage(this.client, contextInfo);
+      // For quoted message, keep the original keys but normalize participant to LID for consistency
       this.quoted = {
         key: {
           remoteJid: contextInfo.remoteJid,
           fromMe:
-            contextInfo.participant === getBotJid(this.client) ||
-            contextInfo.participant === getBotLid(this.client),
+            getNumericId(contextInfo.participant) === getBotNumericId(data, this.client),
           id: this.reply_message.id,
           participant: contextInfo.participant,
         },
@@ -202,6 +196,54 @@ class Message extends Base {
       return await this.client.sendMessage(this.jid, msgContent, realOptions);
     }
     if (type == "audio") {
+      if (messageOptions.ptt) {
+        try {
+          const { toBuffer, convertToOgg } = require("../helpers");
+          const inputBuffer = await toBuffer(content);
+          let oggBuffer = null;
+          if (inputBuffer) {
+            try {
+              oggBuffer = await convertToOgg(inputBuffer);
+            } catch (e) {
+              console.error(
+                "PTT conversion failed, falling back to original content:",
+                e
+              );
+            }
+          }
+
+          if (oggBuffer && Buffer.isBuffer(oggBuffer)) {
+            return await this.client.sendMessage(
+              this.jid,
+              {
+                audio: oggBuffer,
+                mimetype: "audio/ogg; codecs=opus",
+                ptt: true,
+                ...messageOptions,
+              },
+              realOptions
+            );
+          }
+          return await this.client.sendMessage(
+            this.jid,
+            {
+              audio: content,
+              mimetype: "audio/ogg",
+              ptt: true,
+              ...messageOptions,
+            },
+            realOptions
+          );
+        } catch (err) {
+          console.error("Error preparing ptt audio:", err);
+          return await this.client.sendMessage(
+            this.jid,
+            { audio: content, mimetype: "audio/ogg", ...messageOptions },
+            realOptions
+          );
+        }
+      }
+
       return await this.client.sendMessage(
         this.jid,
         { audio: content, mimetype: "audio/mp4", ...messageOptions },
