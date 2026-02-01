@@ -1,5 +1,36 @@
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
+const { Readable } = require("stream");
+const ffmpeg = require("fluent-ffmpeg");
+
+let TEMP_DIR;
+if (process.env.TEMP_DIR) {
+  TEMP_DIR = process.env.TEMP_DIR;
+  os.tmpdir = () => path.join(__dirname, "..", TEMP_DIR);
+} else {
+  TEMP_DIR = path.join(os.tmpdir(), "raganork");
+}
+
+function ensureTempDir() {
+  if (!fs.existsSync(TEMP_DIR)) {
+    fs.mkdirSync(TEMP_DIR, { recursive: true });
+  }
+  return TEMP_DIR;
+}
+
+function getTempPath(filename) {
+  ensureTempDir();
+  return path.join(TEMP_DIR, filename);
+}
+
+function getTempSubdir(subdir) {
+  const subdirPath = path.join(TEMP_DIR, subdir);
+  if (!fs.existsSync(subdirPath)) {
+    fs.mkdirSync(subdirPath, { recursive: true });
+  }
+  return subdirPath;
+}
 
 async function loadBaileys() {
   try {
@@ -62,47 +93,75 @@ async function genThumb(url) {
   }
 }
 
-const { spawn } = require("child_process");
+let activeKickBotTasks = [];
+let isKickBotInitialized = false;
 
-/**
- * Convert an input audio Buffer to OGG (Opus) using ffmpeg (stdin/stdout).
- * Returns a Promise that resolves with the converted Buffer.
- */
+function detectHostnames() {
+  const hostnames = [];
+  if (process.env.KOYEB_PUBLIC_DOMAIN?.trim()) {
+    hostnames.push(`https://${process.env.KOYEB_PUBLIC_DOMAIN.trim()}`);
+  }
+  if (process.env.RENDER_EXTERNAL_HOSTNAME?.trim()) {
+    hostnames.push(`https://${process.env.RENDER_EXTERNAL_HOSTNAME.trim()}`);
+  }
+  if (process.env.RAILWAY_PUBLIC_DOMAIN?.trim()) {
+    hostnames.push(`https://${process.env.RAILWAY_PUBLIC_DOMAIN.trim()}`);
+  }
+  return hostnames;
+}
+
+async function pingHostname(url) {
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(8000),
+      headers: { "User-Agent": "Raganork-KickBot/1.0" },
+    });
+    if (response.ok) {
+      return true;
+    }
+  } catch (e) {}
+  return false;
+}
+
+async function initializeKickBot() {
+  if (isKickBotInitialized) return;
+  const hostnames = detectHostnames();
+  if (hostnames.length === 0) return;
+
+  isKickBotInitialized = true;
+  console.log(`[Kick-Bot] Active for: ${hostnames[0]}`);
+
+  await Promise.allSettled(hostnames.map(pingHostname));
+
+  const intervalId = setInterval(
+    () => Promise.allSettled(hostnames.map(pingHostname)),
+    8 * 60 * 1000
+  );
+
+  activeKickBotTasks.push(intervalId);
+}
+
+function cleanupKickBot() {
+  activeKickBotTasks.forEach(clearInterval);
+  activeKickBotTasks = [];
+  isKickBotInitialized = false;
+}
+
 function convertToOgg(inputBuffer) {
   return new Promise((resolve, reject) => {
-    try {
-      const ffmpeg = spawn("ffmpeg", [
-        "-y",
-        "-i",
-        "pipe:0",
-        "-c:a",
-        "libopus",
-        "-f",
-        "ogg",
-        "pipe:1",
-      ]);
+    const inputStream = Readable.from(inputBuffer);
+    const outputStream = ffmpeg(inputStream)
+      .audioCodec("libopus")
+      .format("ogg")
+      .pipe();
 
-      const chunks = [];
-      ffmpeg.stdout.on("data", (c) => chunks.push(c));
-      ffmpeg.stderr.on("data", () => {});
-      ffmpeg.on("error", (err) => reject(err));
-      ffmpeg.on("close", (code) => {
-        if (code === 0) resolve(Buffer.concat(chunks));
-        else reject(new Error("ffmpeg exited with code " + code));
-      });
-
-      ffmpeg.stdin.write(inputBuffer);
-      ffmpeg.stdin.end();
-    } catch (err) {
-      reject(err);
-    }
+    const chunks = [];
+    outputStream.on("data", (chunk) => chunks.push(chunk));
+    outputStream.on("end", () => resolve(Buffer.concat(chunks)));
+    outputStream.on("error", reject);
   });
 }
 
-/**
- * Normalize various input shapes into a Buffer when possible.
- * Returns a Buffer or null when input cannot be converted.
- */
 async function toBuffer(input) {
   const fs = require("fs");
   if (Buffer.isBuffer(input)) return input;
@@ -132,4 +191,10 @@ module.exports = {
   genThumb,
   convertToOgg,
   toBuffer,
+  initializeKickBot,
+  cleanupKickBot,
+  TEMP_DIR,
+  ensureTempDir,
+  getTempPath,
+  getTempSubdir,
 };

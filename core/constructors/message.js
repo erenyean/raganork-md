@@ -25,6 +25,7 @@ let config = require("../../config");
 const ReplyMessage = require("./reply-message");
 const fs = require("fs");
 const { genThumb } = require("../helpers");
+const { getTempPath } = require("../helpers");
 
 class Message extends Base {
   constructor(client, data) {
@@ -36,27 +37,41 @@ class Message extends Base {
     this.jid = data.key.remoteJid;
     this.isGroup = data.key.remoteJid.endsWith("@g.us");
     this.fromMe = data.key.fromMe;
+    this.fromBot = data.key.id?.startsWith("3EB0");
 
     if (this.isGroup) {
       this.sender = data.key.participant || data.key.participantAlt;
     } else {
-      this.sender = data.key.remoteJid;
+      this.sender = data.key.remoteJid.endsWith("lid")
+        ? data.key.remoteJid
+        : data.key.remoteJidAlt;
     }
 
-    const botNumeric = this.client.user?.lid?.split(":")[0];
+    const botNumeric = this.client.user?.lid?.split(":")[0] + "@lid";
     const senderNumeric = this.sender?.split("@")[0];
 
-    const isSudo = config.SUDO?.split(",")
-      .map((s) => s.trim())
-      .includes(senderNumeric);
-    this.fromOwner = data.key.fromMe || senderNumeric === botNumeric || isSudo;
+    // check if sender is sudo using SUDO_MAP
+    let isSudoUser = false;
+    if (config.SUDO_MAP) {
+      try {
+        const sudoMap = JSON.parse(config.SUDO_MAP);
+        if (Array.isArray(sudoMap)) {
+          isSudoUser = sudoMap.includes(this.sender);
+        }
+      } catch (e) {
+        isSudoUser = false;
+      }
+    }
+
+    this.fromOwner =
+      data.key.fromMe || senderNumeric === botNumeric || isSudoUser;
 
     this.senderName = data.pushName;
     this.myjid = botNumeric;
     this.message =
-      (data.message?.extendedTextMessage === null
-        ? data.message?.conversation
-        : data.message?.extendedTextMessage?.text) || "";
+      data.message?.extendedTextMessage?.text ??
+      data.message?.conversation ??
+      "";
     this.text = this.message;
     this.timestamp = data.messageTimestamp;
     this.data = data;
@@ -123,6 +138,8 @@ class Message extends Base {
       this.mention = null;
     }
 
+    this.reply = this.sendReply;
+
     return super._patch(data);
   }
 
@@ -144,6 +161,13 @@ class Message extends Base {
       };
     }
     return null;
+  }
+
+  async react(emoji, key = this.data.key) {
+    if (!emoji) throw new Error("Emoji is required for reaction.");
+    return await this.client.sendMessage(key.remoteJid, {
+      react: { text: emoji, key },
+    });
   }
 
   async sendMessage(content, type = "text", options = {}) {
@@ -270,199 +294,50 @@ class Message extends Base {
       this.data.message = JSON.parse(
         JSON.stringify(this.data.message).replace("ptvMessage", "videoMessage")
       );
-    const buffer = await downloadMediaMessage(this.data, "buffer");
-    if (type === "buffer") return buffer;
-    var filename =
-      "./temp/temp." +
+
+    const ext =
       this.data.message[Object.keys(this.data.message)[0]].mimetype?.split(
         "/"
       )[1];
-    await fs.writeFileSync(filename, buffer);
-    return filename;
+    const filename = getTempPath(`temp.${ext}`);
+
+    if (type === "buffer") {
+      const buffer = await downloadMediaMessage(this.data, "buffer");
+      return buffer;
+    } else {
+      const stream = await downloadMediaMessage(this.data, "stream");
+      const writeStream = fs.createWriteStream(filename);
+      stream.pipe(writeStream);
+      await new Promise((resolve, reject) => {
+        writeStream.on("finish", resolve);
+        writeStream.on("error", reject);
+      });
+      return filename;
+    }
   }
 
   async sendReply(content, type = "text", options = {}) {
-    const { ephemeralExpiration, quoted, ...messageOptions } = options;
-
-    const realOptions = { quoted: quoted || this.data };
-    if (this.ephemeral && !ephemeralExpiration) {
-      realOptions.ephemeralExpiration = this.ephemeral.expiration;
-    } else if (ephemeralExpiration) {
-      realOptions.ephemeralExpiration = ephemeralExpiration;
-    }
-
-    if (type == "text") {
-      return await this.client.sendMessage(
-        this.jid,
-        { text: content, ...messageOptions },
-        realOptions
-      );
-    }
-    if (type == "image") {
-      const { thumbnail, ...otherOptions } = messageOptions;
-      const imageMessage = { image: content, ...otherOptions };
-
-      if (thumbnail) {
-        const thumbBuffer = await genThumb(thumbnail);
-        imageMessage.jpegThumbnail = thumbBuffer;
-      }
-
-      return await this.client.sendMessage(this.jid, imageMessage, realOptions);
-    }
-    if (type == "video") {
-      const { thumbnail, ...otherOptions } = messageOptions;
-      const messageContent = { video: content, ...otherOptions };
-
-      if (thumbnail) {
-        const thumbBuffer = await genThumb(thumbnail);
-        messageContent.jpegThumbnail = thumbBuffer;
-      }
-
-      return await this.client.sendMessage(
-        this.jid,
-        messageContent,
-        realOptions
-      );
-    }
-    if (type == "audio") {
-      return await this.client.sendMessage(
-        this.jid,
-        { audio: content, mimetype: "audio/mp4", ...messageOptions },
-        realOptions
-      );
-    }
-    if (type == "sticker") {
-      return await this.client.sendMessage(
-        this.jid,
-        { sticker: content, ...messageOptions },
-        realOptions
-      );
-    }
+    const optionsWithQuoted = {
+      ...options,
+      quoted: options.quoted || this.data,
+    };
+    return await this.sendMessage(content, type, optionsWithQuoted);
   }
-  async reply(content, type = "text") {
-    const options = this.ephemeral
-      ? { quoted: this.data, ephemeralExpiration: this.ephemeral.expiration }
-      : { quoted: this.data };
-
-    if (type == "text") {
-      return await this.client.sendMessage(
-        this.jid,
-        { text: content },
-        options
-      );
-    }
-    if (type == "image") {
-      return await this.client.sendMessage(
-        this.jid,
-        { image: content },
-        options
-      );
-    }
-    if (type == "video") {
-      return await this.client.sendMessage(
-        this.jid,
-        { video: content },
-        options
-      );
-    }
-    if (type == "audio") {
-      return await this.client.sendMessage(
-        this.jid,
-        { audio: content, mimetype: "audio/mp4", ...options },
-        options
-      );
-    }
-    if (type == "sticker") {
-      return await this.client.sendMessage(
-        this.jid,
-        { sticker: content },
-        options
-      );
-    }
+  async edit(text = "", _jid = this.jid, _key = false) {
+    return await this.client.sendMessage(_jid, {
+      text,
+      edit: _key,
+    });
   }
-  async edit(text = "", _jid = false, _key = false) {
-    return await this.client.relayMessage(
-      _jid || this.jid,
-      {
-        protocolMessage: {
-          key: _key,
-          type: 14,
-          editedMessage: {
-            conversation: text,
-          },
-        },
-      },
-      {}
-    );
-  }
-
   async getThumb(url) {
     return await genThumb(url);
   }
-  async sendInteractiveMessage(jid, list, options) {
-    if (!jid.includes("@")) throw "Invalid JID";
-    let media;
-    if (options.image) {
-      media = await prepareWAMessageMedia(
-        { image: options.image },
-        { upload: this.client.waUploadToServer }
-      );
-    }
-    if (options.video) {
-      media = await prepareWAMessageMedia(
-        { video: options.video },
-        { upload: this.client.waUploadToServer }
-      );
-    }
-    let buttons = [
-      {
-        name: list.type,
-        buttonParamsJson: JSON.stringify(list.body),
-      },
-    ];
-    if (list.type == "quick_reply") {
-      buttons = list.body;
-    }
-    const msg = generateWAMessageFromContent(
-      jid,
-      {
-        viewOnceMessage: {
-          message: {
-            messageContextInfo: {
-              deviceListMetadata: {},
-              deviceListMetadataVersion: 2,
-            },
-            interactiveMessage: proto.Message.InteractiveMessage.create({
-              body: proto.Message.InteractiveMessage.Body.create({
-                text: list.head.subtitle,
-              }),
-              footer: proto.Message.InteractiveMessage.Footer.create({
-                text: list.head.footer,
-              }),
-              header: proto.Message.InteractiveMessage.Header.create({
-                ...media,
-                title: list.head.title,
-                subtitle: list.head.subtitle,
-                hasMediaAttachment: false,
-              }),
-              nativeFlowMessage:
-                proto.Message.InteractiveMessage.NativeFlowMessage.create({
-                  buttons: buttons.map((button) => ({
-                    name: button.name,
-                    buttonParamsJson: button.buttonParamsJson,
-                  })),
-                }),
-            }),
-          },
-        },
-      },
-      {}
-    );
 
-    await this.client.relayMessage(jid, msg.message, {
-      messageId: msg.key.id,
-    });
+  // @deprecated
+  async sendInteractiveMessage(jid, list, options) {
+    return null;
   }
+  
   async forwardMessage(jid, message, options = {}) {
     let vtype;
     let mtype = getContentType(message.message);

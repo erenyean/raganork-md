@@ -38,10 +38,19 @@ async function deleteMentionReply() {
 }
 
 function isSudoUser(jid) {
-  if (!SUDO) return false;
-  const sudoList = SUDO.split(",").map((s) => s.trim());
-  const numericId = jid?.split("@")[0];
-  return sudoList.some((sudo) => sudo === numericId || jid.includes(sudo));
+  if (!jid) return false;
+
+  let sudoMap = [];
+  if (config.SUDO_MAP) {
+    try {
+      sudoMap = JSON.parse(config.SUDO_MAP);
+      if (!Array.isArray(sudoMap)) sudoMap = [];
+    } catch (e) {
+      sudoMap = [];
+    }
+  }
+
+  return sudoMap.includes(jid);
 }
 
 Module(
@@ -244,7 +253,7 @@ Module(
         return;
       }
 
-      const botId = message.client.user?.id?.split(":")[0] + "@s.whatsapp.net";
+      const botId = message.client.user?.lid?.split(":")[0] + "@s.whatsapp.net";
       const botNumericId = botId?.split("@")[0];
 
       let isMentioned = false;
@@ -281,66 +290,40 @@ Module(
 
         case "image":
           if (mentionData.url) {
-            await message.client.sendMessage(
-              message.jid,
-              {
-                image: { url: mentionData.url },
-                caption: mentionData.caption || "",
-              },
-              { quoted: message.data }
-            );
+            await message.sendReply({ url: mentionData.url }, "image", {
+              caption: mentionData.caption || "",
+            });
           }
           break;
 
         case "video":
           if (mentionData.url) {
-            await message.client.sendMessage(
-              message.jid,
-              {
-                video: { url: mentionData.url },
-                caption: mentionData.caption || "",
-              },
-              { quoted: message.data }
-            );
+            await message.sendReply({ url: mentionData.url }, "video", {
+              caption: mentionData.caption || "",
+            });
           }
           break;
 
         case "audio":
           if (mentionData.url) {
-            await message.client.sendMessage(
-              message.jid,
-              {
-                audio: { url: mentionData.url },
-                ptt: true,
-                mimetype: "audio/mp4",
-              },
-              { quoted: message.data }
-            );
+            await message.sendReply({ url: mentionData.url }, "audio", {
+              ptt: true,
+              mimetype: "audio/mpeg",
+            });
           }
           break;
 
         case "sticker":
           if (mentionData.url) {
-            await message.client.sendMessage(
-              message.jid,
-              {
-                sticker: { url: mentionData.url },
-              },
-              { quoted: message.data }
-            );
+            await message.sendReply({ url: mentionData.url }, "sticker");
           }
           break;
 
         case "document":
           if (mentionData.url) {
-            await message.client.sendMessage(
-              message.jid,
-              {
-                document: { url: mentionData.url },
-                caption: mentionData.caption || "",
-              },
-              { quoted: message.data }
-            );
+            await message.sendReply({ url: mentionData.url }, "document", {
+              caption: mentionData.caption || "",
+            });
           }
           break;
       }
